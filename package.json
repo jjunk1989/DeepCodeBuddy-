@@ -1,0 +1,22 @@
+{
+  "name": "deepcodebuddy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/index.js",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "scripts": {
+    "link:dsh": "node scripts/link-dsh.mjs",
+    "copy:web": "node scripts/copy-web-dist.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-web-dist.mjs",
+    "start": "electron .",
+    "dev": "pnpm run build && electron ."
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "typescript": "^6.0.0",
+    "tsx": "^4.22.0"
+  }
+}

@@ -36,24 +36,26 @@
 
 ## 三、开发路线（分阶段）
 
-### P0 — 技术预研（半天～1 天）
+### P0 — 技术预研（半天～1 天）✅ 已完成（2026-08-18，详见 [P0-RESULTS.md](P0-RESULTS.md)）
 
-- [ ] 确认 Electron 内置 Node ≥ 22.19（dsh 引擎下限）
-- [ ] **子进程可行性 PoC**：spawn 一个完整 host 子进程（`boot()` + apiproxy），确认不监听端口也能通过内部 handler 通信
-- [ ] 最小 `AbstractApiClient` 子类 PoC：`doFetch` 走 IPC，调通 `host.describe` / `session.list`
-- [ ] `apps/web` dist 在 `file://` 下 + IPC bridge 可运行
+- [x] 确认 Electron 内置 Node ≥ 22.19（dsh 引擎下限）→ **Electron 43 / Node 24.18.1**（D16）；本地 Node v24.17.0 验证
+- [x] **子进程可行性 PoC**：spawn host 子进程（`boot()` + `toFetchHandler(ctx.apiProxy)`），**不监听端口**经 Node IPC 通信 ✅
+- [x] 最小 `AbstractApiClient` 子类 PoC：`doFetch` 走 IPC，调通 `host.describe` / `session.list`（`InProcessApiClient` + 自定义子类双路径）✅
+- [x] `apps/web` dist 可构建（~11MB）；**默认绝对路径不可 file:// 直载，`--base=./` 相对路径版本可行**；IPC bridge 待 P1（需 Electron）
 
-### P1 — 核心集成（主要工作量）
+### P1 — 核心集成（主要工作量）🔄 传输层已完成，完整 UI 待续
 
-- [ ] **host 子进程**：spawn 完整 host（子进程内 `boot()` + apiproxy），**不监听网络端口**
-- [ ] 子进程生命周期：spawn、优雅关闭（dispose → 退出）、崩溃检测与重启、stdout/stderr 分离（协议与诊断分离，诊断走 stderr）
-- [ ] 编写裁剪后的默认 `cordis.yml`（只装需要的 bundle）
-- [ ] `$DSH_HOME` 重定向到应用用户数据目录
-- [ ] **IPC 网关（主进程）**：桥渲染进程 ↔ host 子进程（子进程侧暴露 `toFetchHandler(api)`；主进程转发请求/响应与下行流，见 D20）
-- [ ] **渲染进程 carrier**：`IpcApiClient extends AbstractApiClient`（`doFetch` → 主进程 IPC → 子进程）
-- [ ] 下行流桥接：`events.mux` / `events.host`（浏览器形态是 WebSocket，IPC 形态提供等效 AsyncIterable，跨两级转发）
-- [ ] 渲染进程加载 `apps/web` dist，替换默认 fetch 为 IPC carrier
-- [ ] 单实例锁、崩溃恢复、重启后会话恢复
+- [x] **host 子进程**：`src/host/index.ts`（`boot()` + `toFetchHandler(ctx.apiProxy)`），**不监听网络端口**（Electron fork 验证通过）
+- [x] 子进程生命周期：spawn、`ready` 信号、优雅关闭（dispose → 退出）、崩溃检测与重启、诊断走 stderr
+- [x] 默认组合：`src/host/composition.ts`（base + 过滤 web transport/client 层 + directory-picker native）
+- [ ] `$DSH_HOME` 重定向到应用用户数据目录（当前走 env，待接入 `app.getPath('userData')`）
+- [x] **IPC 网关（主进程）**：`src/main/ipc-gateway.ts`（渲染进程 ↔ host 子进程，请求/响应 + 下行流，D20）
+- [x] **渲染进程 carrier**：`src/renderer/bridge.js` 无侵入替换 `window.fetch`/`WebSocket` → `preload` → 主进程 → host
+- [x] 下行流桥接：`events.mux` / `events.host` 经 IPC 跨两级转发（E2E 验证：open + 首帧 ✅）
+- [x] 渲染进程加载 `apps/web` dist（file:// + `--base=./` + bridge 注入）
+- [x] 单实例锁、崩溃恢复（host 自动重启）
+- [x] **完整 UI 渲染**：虚拟 `webServer` 服务（不监听端口，D10）+ `dshapp://` 自定义协议 + client 层保留——`__DSH_BOOT__` 注入、`/plugins/*` bundle 服务、完整会话 UI 均验证通过（E2E DOM 渲染 ✅）
+- [ ] **遗留（次要）**：`dynamicCordisRunner/*` 相关 RPC 返回 HTTP 400（Cordis 预览/库存面板），不影响核心会话 UI；`$DSH_HOME` 接入 `app.getPath('userData')`
 
 ### P2 — 社区插件管理
 
