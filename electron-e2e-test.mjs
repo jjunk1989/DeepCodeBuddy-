@@ -42,6 +42,15 @@ app.whenReady().then(async () => {
   await win.loadURL('dshapp://web/index.html')
   console.log('[e2e] page loaded via dshapp://')
 
+  // 检查 window.fetch 是否被 bridge 替换 + 页面 origin + __dshBridge
+  const envCheck = await win.webContents.executeJavaScript(`({
+    origin: location.origin,
+    hasBridge: typeof window.__dshBridge !== 'undefined',
+    bridgeKeys: window.__dshBridge ? Object.keys(window.__dshBridge) : [],
+    fetchSrc: window.fetch.toString().slice(0, 60),
+  })`)
+  console.log('[e2e] env:', JSON.stringify(envCheck))
+
   // 检查 __DSH_BOOT__ 是否注入（client-modules 的 index tap）
   const bootCheck = await win.webContents.executeJavaScript(`({
     hasBoot: typeof window.__DSH_BOOT__ === 'object' && window.__DSH_BOOT__ !== null,
@@ -62,6 +71,19 @@ app.whenReady().then(async () => {
     })()
   `)
   console.log('[e2e] bridge fetch:', JSON.stringify(result))
+
+  // 模拟页面 connection.rpc 的 typert 请求（信封与 api-gateway client 一致）
+  const rpcTest = await win.webContents.executeJavaScript(`
+    (async () => {
+      const r = await window.fetch('http://dsh.internal/api/dynamicCordisRunner/inventory', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 'e2e-typert-1', method: 'dynamicCordisRunner/inventory', payload: { args: {} } })
+      })
+      return { status: r.status, body: (await r.text()).slice(0, 300) }
+    })()
+  `)
+  console.log('[e2e] typert rpc (renderer):', JSON.stringify(rpcTest))
 
   // 等待 UI 渲染（页面 cordis 树 settle，插件加载），观察 DOM
   await new Promise((r) => setTimeout(r, 15000))

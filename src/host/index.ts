@@ -11,6 +11,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { boot } from '@deepseek-ai/dsh-app-boot'
 import { toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
+import type { HostConnectionService } from '@deepseek-ai/dsh-client-connection'
 import { buildHostPatches } from './composition.ts'
 import { VirtualWebServer } from './virtual-webserver.ts'
 import type { HostRequest, HostResponse, WireFetchInit } from '../common/ipc-protocol.ts'
@@ -42,7 +43,13 @@ async function main(): Promise<void> {
     // webRuntime：web-app bundle 的 web-runtime 行被禁用，这里直接提供等价服务
     hostCtx.provide('webRuntime', { lanAddresses: [], trustedHosts: [] })
   }, nodeModulesUrl)
-  const handler = toFetchHandler(ctx.apiProxy as never)
+  const apiProxyHandler = toFetchHandler(ctx.apiProxy as never)
+  // /api/* 用 connection 的共享 fetch handler：让 typert 拦截器（dynamicCordisRunner/* 等
+  // @Remote 端点）生效，fallback 仍为 apiProxy（等价于 connection 的 /api 路由，D10）
+  const connection = ctx.get('connection') as HostConnectionService | undefined
+  const handler = connection !== undefined && typeof connection.createSharedFetchHandler === 'function'
+    ? connection.createSharedFetchHandler('/api', apiProxyHandler as never)
+    : apiProxyHandler
   const server = webServer ?? (ctx.get('webServer') as VirtualWebServer)
   process.stderr.write('[host] booted, apiProxy + virtual webServer serving via IPC (no port bound)\n')
 
@@ -73,7 +80,7 @@ async function main(): Promise<void> {
 }
 
 async function handleFetch(
-  handler: { fetch: typeof fetch },
+  handler: { fetch: (req: Request) => Promise<Response> },
   webServer: VirtualWebServer,
   id: number,
   input: string,
@@ -82,8 +89,7 @@ async function handleFetch(
   try {
     const req = new Request(input, init as RequestInit)
     const url = new URL(input)
-    // /api/* → apiProxy（IPC 直连，绕开 connection 的 HTTP 路由与 trust fence——
-    // 本应用无网络面，无跨站/回环风险，D10）
+    // /api/* → connection 共享 fetch handler（typert 拦截器 + apiProxy fallback，D10）
     // 其他路径（/plugins/*、静态资源、/）→ 虚拟 webServer（client-modules 路由 + 内置静态服务）
     const response = url.pathname.startsWith('/api/')
       ? await handler.fetch(req)

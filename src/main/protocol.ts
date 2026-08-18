@@ -26,11 +26,13 @@ export function registerAppProtocol(channel: HostChannel): void {
     const path = url.pathname.replace(/^\/web/, '') || '/'
     const headers: Record<string, string> = {}
     request.headers.forEach((value, key) => { headers[key] = value })
-    const body = await request.arrayBuffer().catch(() => new ArrayBuffer(0))
+    // body 以文本传递：Uint8Array 跨 Node IPC（JSON 序列化）会损坏为普通对象，
+    // host 端 new Request 会得到 [object Object] → 400。文本跨两级 IPC 安全。
+    const text = await request.text().catch(() => '')
     return remote.fetch(`http://dsh.internal${path}`, {
       method: request.method,
       headers,
-      body: body.byteLength > 0 ? new Uint8Array(body) : undefined,
+      body: text.length > 0 ? text : undefined,
     })
   })
 }

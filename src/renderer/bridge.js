@@ -29,7 +29,10 @@
         headers: init && init.headers instanceof Headers
           ? Object.fromEntries(init.headers.entries())
           : init && init.headers,
-        body: init && init.body,
+        // body 需为字符串（跨 contextBridge/IPC 序列化安全）：对象则 JSON.stringify
+        body: typeof init === 'object' && init && init.body != null && typeof init.body !== 'string'
+          ? JSON.stringify(init.body)
+          : init && init.body,
       }).then((result) => new Response(result.body, {
         status: result.status,
         statusText: result.statusText,
